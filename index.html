@@ -39,6 +39,7 @@ summary{font-weight:500;cursor:pointer;list-style:none;display:flex;justify-cont
 summary::-webkit-details-marker{display:none}summary::after{content:"+";color:var(--mut)}details[open] summary::after{content:"\2212"}
 details p{margin:12px 0 0;color:var(--mut);font-size:16px}
 li{margin-bottom:14px}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));max-width:488px;margin:0 auto;padding:14px 18px;border-radius:16px;background:var(--ink);color:var(--bg);font-size:15px;line-height:1.4;z-index:9}
 .seg{display:flex;gap:6px;padding:6px;border-radius:99px;background:var(--bg)}.seg button{flex:1;border:0;border-radius:99px;padding:12px 0;background:none;color:var(--mut);font:inherit;font-size:15px;font-weight:500;cursor:pointer}.seg button.on{background:var(--c2);color:var(--on2)}
 .pron{margin-top:22px}.resp{font-size:26px;font-weight:500;color:var(--ac);line-height:1.3}.ipa{color:var(--mut);font-size:16px;margin-top:2px}.tips{list-style:none;margin:14px 0 0;padding:0;font-size:16px;color:var(--mut)}.tips li{margin:6px 0}.tips b{color:var(--ink);font-weight:500}
 </style></head><body><main>
@@ -124,7 +125,7 @@ const M=[
 "Active recall over recognition: you type Dutch from English, fill gaps and write what you hear, rather than just flipping cards.",
 "Nouns come with de or het as one chunk, and every word sits inside an example sentence.",
 "Practice type moves with strength: translation first, then gap-fill in context, then dictation.",
-"Small daily load: 5 new words plus due reviews, about 15 minutes. Daily contact beats long weekly sessions.",
+"Short sessions, as many as you like: up to 5 new words each, with a daily limit you can change in Settings. Extra practice never changes your review schedule.",
 "Say every answer aloud. Add 20 minutes of real Dutch listening and one weekly conversation with a tutor or language café.",
 "Audio uses your device’s Dutch voice. If it sounds English, install a Dutch voice in your system settings."];
 const K="nl-a1-v1",IV=[0,1,3,7,14,30,60],$=i=>document.getElementById(i),app=$("app");
@@ -133,19 +134,30 @@ try{Object.assign(S,JSON.parse(localStorage.getItem(K)||"{}"))}catch(e){}
 const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}window.onSave&&onSave()};
 const T=()=>Math.floor((Date.now()-new Date().getTimezoneOffset()*6e4)/864e5);
 const nz=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"");
-const say=(t,r)=>{try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang="nl-NL";u.rate=r||.85;const v=speechSynthesis.getVoices().find(v=>/^nl/i.test(v.lang));if(v)u.voice=v;speechSynthesis.speak(u)}catch(e){}};
+let VO=null;
+const pickVoice=()=>{try{const v=speechSynthesis.getVoices();VO=v.find(x=>/^nl[-_]NL/i.test(x.lang))||v.find(x=>/^nl/i.test(x.lang))||null}catch(e){}return VO};
+try{speechSynthesis.onvoiceschanged=pickVoice;pickVoice()}catch(e){}
+let tt;const toast=m=>{let e=$("toast");if(!e){e=document.createElement("div");e.id="toast";document.body.append(e)}e.textContent=m;e.hidden=false;clearTimeout(tt);tt=setTimeout(()=>e.hidden=true,7000)};
+const NOSND="No sound. Turn off the silent switch, raise the volume, and install a Dutch voice (iPhone: Settings > Accessibility > Spoken Content > Voices).";
+function say(t,r){try{const s=speechSynthesis;if(s.speaking||s.pending)s.cancel();
+const u=new SpeechSynthesisUtterance(t),v=VO||pickVoice();u.lang=v?v.lang.replace("_","-"):"nl-NL";if(v)u.voice=v;u.rate=r||.85;
+let ok=0;u.onstart=()=>ok=1;u.onerror=e=>{if(e.error!="canceled"&&e.error!="interrupted")toast("Speech error: "+e.error)};
+setTimeout(()=>{try{s.speak(u);setTimeout(()=>{if(!ok&&!s.speaking)toast(NOSND)},2000)}catch(e){toast("Speech error: "+(e.message||e))}},60)}catch(e){toast("Speech is not available in this browser.")}}
+addEventListener("pointerdown",()=>{try{const u=new SpeechSynthesisUtterance(" ");u.volume=0;speechSynthesis.speak(u)}catch(e){}},{once:true});
 const streak=()=>{let t=T(),n=0;if(!S.d.includes(t))t--;while(S.d.includes(t)){n++;t--}return n};
 const hl=s=>s.replace(/\{(.+?)\}/,"<b>$1</b>"),cnt=()=>Object.keys(S.c).length;
 const dueIds=()=>Object.keys(S.c).filter(i=>S.c[i].d<=T());
-const newCap=()=>Math.max(0,Math.min(5-(S.n[T()]||0),W.length-cnt()));
+const NEWD=()=>{try{return+localStorage.getItem("nl-new")||10}catch(e){return 10}};
+const newCap=()=>Math.max(0,Math.min(NEWD()-(S.n[T()]||0),W.length-cnt())),batch=()=>Math.min(5,newCap());
 function show(v){document.body.classList.remove("in");document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v==v));({p:home,g:gram,m:meth,s:()=>speak()})[v]()}
-function home(){const d=dueIds().length,nw=newCap(),n=d+nw,sk=streak(),sol=Object.values(S.c).filter(c=>c.b>=4).length;
-app.innerHTML=`<h2>Today</h2><dl><div><dt>Reviews due</dt><dd>${d}</dd></div><div><dt>New words</dt><dd>${nw}</dd></div><div><dt>Streak</dt><dd>${sk} day${sk==1?"":"s"}</dd></div></dl><button class="pri" id="go" ${n?"":"disabled"}>${n?"Start session":"Done for today"}</button><h3>Progress</h3><div class="bar"><i style="width:${cnt()/W.length*100}%"></i></div><p class="mut">${cnt()} of ${W.length} words introduced, ${sol} solid.</p>`;
+function home(){const d=dueIds().length,nw=batch(),n=d+nw,sk=streak(),sol=Object.values(S.c).filter(c=>c.b>=4).length;
+app.innerHTML=`<h2>Today</h2><dl><div><dt>Reviews due</dt><dd>${d}</dd></div><div><dt>New words</dt><dd>${S.n[T()]||0} of ${NEWD()}</dd></div><div><dt>Streak</dt><dd>${sk} day${sk==1?"":"s"}</dd></div></dl><button class="pri" id="go" ${n||cnt()?"":"disabled"}>${n?"Start session":cnt()?"Extra practice":"Done for today"}</button>${!n&&cnt()?'<p class="mut" style="margin-top:14px">Today\u2019s new words and reviews are done. Extra practice keeps you sharp and never changes your review schedule.</p>':""}<h3>Progress</h3><div class="bar"><i style="width:${cnt()/W.length*100}%"></i></div><p class="mut">${cnt()} of ${W.length} words introduced, ${sol} solid.</p>`;
 $("go").onclick=start}
-let Q=[],qi=0,H=0,N=0;
+let Q=[],qi=0,H=0,N=0,EX=false;
 function start(){const kind=b=>b<2?"en2nl":b<4?"cloze":"dict";
-const due=dueIds().sort((a,b)=>S.c[a].d-S.c[b].d).slice(0,20).map(i=>({w:+i,k:kind(S.c[i].b)})),nw=[];
-for(let i=0;i<W.length&&nw.length<newCap();i++)if(!S.c[i])nw.push(i);
+let due=dueIds().sort((a,b)=>S.c[a].d-S.c[b].d).slice(0,15).map(i=>({w:+i,k:kind(S.c[i].b)})),nw=[];
+for(let i=0;i<W.length&&nw.length<batch();i++)if(!S.c[i])nw.push(i);
+EX=!due.length&&!nw.length;if(EX)due=Object.keys(S.c).sort((a,b)=>S.c[a].b-S.c[b].b||(S.c[a].u||0)-(S.c[b].u||0)).slice(0,10).map(i=>({w:+i,k:kind(S.c[i].b)}));
 Q=[...due,...nw.map(w=>({w,k:"intro"})),...nw.map(w=>({w,k:"en2nl"}))];qi=0;H=0;N=0;document.body.classList.add("in");step()}
 function step(){if(qi>=Q.length)return fin();
 const t=Q[qi],[nl,en,s,tr]=W[t.w],tg=s.match(/\{(.+?)\}/)[1],full=s.replace(/[{}]/g,""),
@@ -161,7 +173,7 @@ const inp=$("in"),ok=$("ok");let done=false;
 if($("sy"))$("sy").onclick=()=>say(full);
 const go=()=>{if(done){qi++;return step()}
 done=true;inp.disabled=true;const r=nz(inp.value)==nz(ans);
-if(!t.r){const c=S.c[t.w];c.b=r?Math.min(6,c.b+1):Math.max(0,c.b-2);c.d=T()+IV[c.b];c.u=Date.now();N++;H+=r;if(!S.d.includes(T()))S.d.push(T());save();if(!r)Q.push({...t,r:1})}
+if(!t.r){const c=S.c[t.w];if(!EX){c.b=r?Math.min(6,c.b+1):Math.max(0,c.b-2);c.d=T()+IV[c.b];c.u=Date.now()}N++;H+=r;if(!S.d.includes(T()))S.d.push(T());save();if(!r)Q.push({...t,r:1})}
 $("fb").innerHTML=`<div class="fb ${r?"ok":"bad"}">${r?"Correct":"Not quite"}</div>${r||t.k=="dict"?"":`<div class="big2">${ans}</div>`}<p class="ex">${hl(s)}<br><i>${tr}</i></p>${window.guide?guide(t.w,0):""}`;
 say(t.k=="en2nl"?nl:full);ok.textContent="Continue";setTimeout(()=>ok.focus(),60)};
 ok.onclick=go;inp.onkeydown=e=>{if(e.key=="Enter")go()};
@@ -173,8 +185,11 @@ function applyTheme(t){const d=document.documentElement;t=="system"?d.removeAttr
 try{t=="system"?localStorage.removeItem("nl-theme"):localStorage.setItem("nl-theme",t)}catch(e){}
 const dk=t=="dark"||(t=="system"&&matchMedia("(prefers-color-scheme:dark)").matches);document.querySelector('meta[name="theme-color"]').content=dk?"#131314":"#f8fafd"}
 function meth(){const t=TH();
-app.innerHTML=`<h2>Settings</h2><h3>Appearance</h3><div class="seg">${["light","dark","system"].map(x=>`<button data-t="${x}"${x==t?' class="on"':""}>${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div><h3>Sync</h3><div id="sync"></div><h3>About</h3><details><summary>How this course works</summary><ul style="padding-left:18px;margin:12px 0 0;color:var(--mut);font-size:16px">${M.map(x=>`<li>${x}</li>`).join("")}</ul></details>`;
+app.innerHTML=`<h2>Settings</h2><h3>Appearance</h3><div class="seg">${["light","dark","system"].map(x=>`<button data-t="${x}"${x==t?' class="on"':""}>${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div><h3>New words per day</h3><div class="seg" id="nseg">${[5,10,15].map(n=>`<button data-n="${n}"${n==NEWD()?' class="on"':""}>${n}</button>`).join("")}</div><h3>Sync</h3><div id="sync"></div><h3>Voice</h3><p class="mut" id="vs"></p><button class="ghost" id="vt" style="margin-top:0">Test voice</button><h3>About</h3><details><summary>How this course works</summary><ul style="padding-left:18px;margin:12px 0 0;color:var(--mut);font-size:16px">${M.map(x=>`<li>${x}</li>`).join("")}</ul></details>`;
 app.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{applyTheme(b.dataset.t);app.querySelectorAll(".seg button").forEach(x=>x.classList.toggle("on",x==b))});
+$("nseg").querySelectorAll("button").forEach(b=>b.onclick=()=>{try{localStorage.setItem("nl-new",b.dataset.n)}catch(e){}$("nseg").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b))});
+const vv=pickVoice();$("vs").textContent=vv?"Dutch voice found: "+vv.name+". On iPhone, the silent switch must be off to hear it.":"No Dutch voice found. Install one in your device\u2019s text-to-speech settings (iPhone: Settings > Accessibility > Spoken Content > Voices > Dutch).";
+$("vt").onclick=()=>say("Goedemorgen, hoe gaat het met u?");
 window.paintSync&&paintSync()}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.v));
 app.addEventListener("click",e=>{if(e.target.id=="x")show("p")});
