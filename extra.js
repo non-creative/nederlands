@@ -15,34 +15,40 @@ else if(i>0&&C[i][j]==C[i-1][j]+1){R[i-1]={s:"miss"};i--}else j--}
 return R}
 //--ui
 document.head.append(Object.assign(document.createElement("style"),{textContent:"h2~h2{margin-top:28px}.w{font-weight:600}.w.ok{color:var(--ok)}.w.close,.w.bad,.w.miss{color:var(--bad)}.w.miss{text-decoration:line-through}.w.u{border-bottom:2px dotted var(--mut)}input+input{margin-top:10px}"}));
-// ---- Supabase sync: set up in Settings, hidden once signed in ----
-let sb=null,user=null,msg="",bad=false,tm,cfg={};
+// ---- Supabase sync: no login. Same project URL, key and sync code on every device. ----
+let cfg={},msg="",bad=false,tm,busy=false;
 try{cfg=JSON.parse(localStorage.getItem("nl-sb")||"{}")}catch(e){}
-const SBJS="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js";
-const loadSb=()=>new Promise((ok,no)=>{if(window.supabase)return ok();const s=document.createElement("script");s.src=SBJS;s.onload=ok;s.onerror=()=>no(new Error("Could not load the sync library. Check your connection."));document.head.append(s)});
-async function initSb(){if(sb||!cfg.url||!cfg.key)return;await loadSb();sb=supabase.createClient(cfg.url,cfg.key);
-sb.auth.onAuthStateChange((ev,s)=>{if(ev=="INITIAL_SESSION")return;user=s?s.user:null;setTimeout(()=>{paintSync();sync()},0)});
-const {data}=await sb.auth.getSession();user=data.session?data.session.user:null;if(user){paintSync();sync()}}
-async function sync(){if(!sb||!user)return;
-try{const r=await sb.from("progress").select("data").eq("user_id",user.id).maybeSingle();if(r.error)throw r.error;
-S=merge(S,(r.data&&r.data.data)||{});try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}
-const w=await sb.from("progress").upsert({user_id:user.id,data:S,updated_at:new Date().toISOString()});if(w.error)throw w.error;
-bad=false;msg="Last sync "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}catch(e){bad=true;msg=e.message||String(e)}
-paintSync();if($("go"))home()}
+const persist=()=>{try{localStorage.setItem("nl-sb",JSON.stringify(cfg))}catch(e){}};
+async function sha(s){if(!window.crypto||!crypto.subtle)throw new Error("Sync needs a secure page (https or localhost).");
+return [...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode("nl-dutch:"+s.trim())))].map(b=>b.toString(16).padStart(2,"0")).join("")}
+async function rpc(fn,args){let r;
+try{r=await fetch(cfg.url+"/rest/v1/rpc/"+fn,{method:"POST",headers:{apikey:cfg.key,"Content-Type":"application/json",...(/^eyJ/.test(cfg.key)?{Authorization:"Bearer "+cfg.key}:{})},body:JSON.stringify(args)})}
+catch(e){throw new Error("Could not reach Supabase. Check the project URL and your connection.")}
+const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch(e){}
+if(!r.ok){const m=(j&&(j.message||j.msg))||"";
+throw new Error(r.status==404||(j&&j.code=="PGRST202")?"Sync function not found. Run supabase.sql in the Supabase SQL editor first.":r.status==401||/api key/i.test(m)?"Supabase rejected the key. Copy the anon or publishable key again.":m||"Supabase error "+r.status)}
+return j}
+async function doSync(){const h=await sha(cfg.code),rem=await rpc("dutch_get",{p_code:h});
+S=merge(S,rem&&typeof rem=="object"?rem:{});try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}
+await rpc("dutch_put",{p_code:h,p_data:S})}
+const stamp=()=>"Last sync "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+async function sync(){if(!cfg.on||busy)return;busy=true;
+try{await doSync();bad=false;msg=stamp()}catch(e){bad=true;msg=e.message}
+busy=false;paintSync();if($("go"))home()}
 window.onSave=()=>{clearTimeout(tm);tm=setTimeout(sync,2500)};
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)sync()});
 const FA='autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"';
 function paintSync(){const e=$("sync");if(!e)return;
-if(user){e.innerHTML=`<div class="fb ${bad?"bad":"ok"}" style="margin-top:0">${bad?"Sync failed":"Synced"}</div><p class="mut">${esc(user.email)}${msg?". "+esc(msg):""}</p><button class="ghost" id="sn" style="margin-top:6px">Sync now</button><button class="ghost" id="so" style="margin-top:6px">Turn off</button>`;
-$("sn").onclick=sync;$("so").onclick=()=>sb.auth.signOut();return}
-e.innerHTML=`<p class="mut">Connect once to keep progress in sync across your Mac, web and phone.</p><input id="su" placeholder="Project URL" value="${esc(cfg.url||"")}" ${FA}><input id="sk" placeholder="Anon or publishable key" value="${esc(cfg.key||"")}" ${FA}><input id="em" type="email" placeholder="Email" value="${esc(cfg.email||"")}" autocomplete="email"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><button class="pri" id="si">Connect and sync</button><p class="mut" id="er"></p>`;
+if(cfg.on){e.innerHTML=`<div class="fb ${bad?"bad":"ok"}" style="margin-top:0">${bad?"Sync failed":"Synced"}</div><p class="mut">${esc(msg)}</p><button class="ghost" id="sn" style="margin-top:6px">Sync now</button><button class="ghost" id="so" style="margin-top:6px">Turn off</button>`;
+$("sn").onclick=sync;$("so").onclick=()=>{cfg.on=false;persist();paintSync()};return}
+e.innerHTML=`<p class="mut">Use the same project URL, key and sync code on every device. No account or password needed.</p><input id="su" placeholder="Project URL" value="${esc(cfg.url||"")}" ${FA}><input id="sk" placeholder="Anon or publishable key" value="${esc(cfg.key||"")}" ${FA}><input id="sc" placeholder="Sync code (any long phrase)" value="${esc(cfg.code||"")}" ${FA}><button class="pri" id="si">Connect and sync</button><p class="mut" id="er"></p>`;
 $("si").onclick=connect}
-async function connect(){const url=$("su").value.trim().replace(/\/+$/,""),key=$("sk").value.trim(),email=$("em").value.trim(),pw=$("pw").value,er=$("er"),b=$("si");
-if(!/^https:\/\/\S+$/.test(url)||!key||!email||!pw){er.textContent="Fill in the project URL, key, email and password.";return}
-if(cfg.url!=url||cfg.key!=key)sb=null;cfg={url,key,email};try{localStorage.setItem("nl-sb",JSON.stringify(cfg))}catch(e){}
-b.disabled=true;er.textContent="";
-try{await initSb();const r=await sb.auth.signInWithPassword({email,password:pw});if(r.error)throw r.error}catch(e){const x=$("er"),y=$("si");if(x)x.textContent=e.message;if(y)y.disabled=false}}
-initSb().catch(()=>{});
+async function connect(){const url=$("su").value.trim().replace(/\/+$/,""),key=$("sk").value.trim(),code=$("sc").value.trim(),er=$("er"),b=$("si");
+if(!/^https:\/\/\S+$/.test(url)||!key||code.length<6){er.textContent="Enter the project URL, the key, and a sync code of at least 6 characters.";return}
+cfg={url,key,code,on:false};persist();b.disabled=true;er.textContent="Connecting…";
+try{await doSync();cfg.on=true;persist();bad=false;msg=stamp();paintSync();if($("go"))home()}
+catch(e){const x=$("er"),y=$("si");if(x)x.textContent=e.message;if(y)y.disabled=false}}
+if(cfg.on)sync();
 // ---- Speech practice (only when the local Mac server answers) ----
 fetch("api/health").then(r=>r.ok?r.json():null).then(j=>{if(j&&j.speech){document.querySelector('nav [data-v="s"]').hidden=false;setInterval(()=>{if(!document.hidden)fetch("api/health").catch(()=>{})},3e5)}}).catch(()=>{});
 let SQ=null,rec=null;const NUM="nul een twee drie vier vijf zes zeven acht negen tien".split(" ");
