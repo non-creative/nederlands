@@ -50,13 +50,30 @@ try{await doSync();cfg.on=true;persist();bad=false;msg=stamp();paintSync();if($(
 catch(e){const x=$("er"),y=$("si");if(x)x.textContent=e.message;if(y)y.disabled=false}}
 if(cfg.on)sync();
 // ---- Speech practice (only when the local Mac server answers) ----
-fetch("api/health").then(r=>r.ok?r.json():null).then(j=>{if(j&&j.speech){document.querySelector('nav [data-v="s"]').hidden=false;setInterval(()=>{if(!document.hidden)fetch("api/health").catch(()=>{})},3e5)}}).catch(()=>{});
+document.querySelector('nav [data-v="s"]').hidden=false;
+let ENGINE="",CUR="";const SR=window.SpeechRecognition||window.webkitSpeechRecognition,IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform=="MacIntel"&&navigator.maxTouchPoints>1),SA=navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;
+fetch("api/health").then(r=>r.ok?r.json():null).then(j=>{if(j&&j.speech){ENGINE="whisper";engNote();setInterval(()=>{if(!document.hidden)fetch("api/health").catch(()=>{})},3e5)}}).catch(()=>{});
+const engine=()=>ENGINE=="whisper"?"whisper":SR&&!(IOS&&SA)?"browser":"dictate";
+function engNote(){const el=$("eng"),m=engine();if(!el)return;
+el.textContent={whisper:"Whisper on your Mac listens and checks your pronunciation.",browser:"Your browser’s speech recognition listens in Dutch.",dictate:IOS&&SA?"iPhone home-screen apps can’t use live speech recognition. Dictate with the keyboard microphone below, or open this page in Safari to get the Record button.":"This browser has no speech recognition. Dictate with the keyboard microphone below."}[m];
+const rc=$("rc");if(rc)rc.hidden=m=="dictate";if(m=="dictate")dictate()}
+function dictate(){const d=$("dict");if(!d||d.firstChild)return;
+d.innerHTML=`<input id="dt" lang="nl" placeholder="Tap here, then the keyboard microphone" ${FA}><button class="pri" id="dc">Check</button><p class="mut">For Dutch dictation, add the Dutch keyboard (Settings > General > Keyboard > Keyboards) and switch to it with the globe key before tapping the microphone.</p>`;
+$("dc").onclick=()=>{const v=$("dt").value.trim();if(v)result(CUR,{text:v,words:v.split(/\s+/).map(w=>({w,p:1}))})}}
+let SRI=null;
+function recordB(full){const b=$("rc"),out=$("res");if(SRI){SRI.stop();return}
+const R=SRI=new SR();R.lang="nl-NL";R.interimResults=false;R.maxAlternatives=1;let got=false;
+R.onresult=ev=>{got=true;const x=ev.results[0][0].transcript;result(full,{text:x,words:x.split(/\s+/).filter(Boolean).map(w=>({w,p:1}))})};
+R.onerror=ev=>{got=true;if(ev.error=="no-speech")out.textContent="Nothing heard. Try again, a little closer to the microphone.";else if(ev.error!="aborted"){out.textContent="Speech recognition is blocked here ("+ev.error+"). Use keyboard dictation below.";dictate()}};
+R.onend=()=>{SRI=null;b.textContent="Record";if(!got)out.textContent="Nothing heard. Try again."};
+try{R.start();b.textContent="Stop";out.textContent=""}catch(x){SRI=null;out.textContent="Could not start speech recognition. Use keyboard dictation below.";dictate()}}
+function record(full){const m=engine();if(m=="whisper")return recordW(full);if(m=="browser")return recordB(full);dictate()}
 let SQ=null,rec=null;const NUM="nul een twee drie vier vijf zes zeven acht negen tien".split(" ");
 function speak(){if(SQ===null){const ids=Object.keys(S.c);SQ=ids.length?+ids[Math.floor(Math.random()*ids.length)]:Math.floor(Math.random()*10)}
 const full=W[SQ][2].replace(/[{}]/g,"");
-app.innerHTML=`<h3>Say this sentence</h3><div class="big2">${full}</div><div class="mut">${W[SQ][3]}</div>${window.sguide?sguide(full):""}<button class="ghost" id="ls">Listen first</button><button class="ghost" id="sl">Slow</button><button class="pri" id="rc">Record</button><div id="res"></div><button class="ghost" id="nx">Another sentence</button>`;
-$("ls").onclick=()=>say(full);$("sl").onclick=()=>say(full,.55);$("nx").onclick=()=>{SQ=null;speak()};$("rc").onclick=()=>record(full)}
-async function record(full){const b=$("rc"),out=$("res");if(rec){rec.stop();return}
+app.innerHTML=`<h3>Say this sentence</h3><div class="big2">${full}</div><div class="tr">${W[SQ][3]}</div>${window.sguide?sguide(full):""}<button class="ghost" id="ls">Listen first</button><button class="ghost" id="sl">Slow</button><button class="pri" id="rc">Record</button><p class="mut" id="eng" style="margin-top:12px"></p><div id="dict"></div><div id="res"></div><button class="ghost" id="nx">Another sentence</button>`;
+$("ls").onclick=()=>say(full);$("sl").onclick=()=>say(full,.55);$("nx").onclick=()=>{SQ=null;speak()};$("rc").onclick=()=>record(full);CUR=full;engNote()}
+async function recordW(full){const b=$("rc"),out=$("res");if(rec){rec.stop();return}
 try{const st=await navigator.mediaDevices.getUserMedia({audio:true}),ch=[];rec=new MediaRecorder(st);
 rec.ondataavailable=e=>ch.push(e.data);
 rec.onstop=async()=>{st.getTracks().forEach(x=>x.stop());const type=rec.mimeType||"audio/webm";rec=null;b.textContent="Checking";b.disabled=true;
