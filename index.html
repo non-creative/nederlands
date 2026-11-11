@@ -34,7 +34,9 @@ button:focus-visible{outline:3px solid var(--ac);outline-offset:3px}
 .bar i{display:block;height:100%;border-radius:3px;background:var(--ac)}
 .big{font-size:40px;font-weight:500;line-height:1.2;margin:6px 0}
 .big2{font-size:24px;line-height:1.5;margin:6px 0}
-.ex{margin:24px 0 0;padding:16px 18px;border-radius:18px;background:var(--bg)}
+.row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.spk{flex:none;width:44px;height:44px;margin:-4px -6px 0 0;border:0;border-radius:50%;background:var(--c2);color:var(--on2);display:grid;place-items:center;cursor:pointer}
+.ex{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;margin:24px 0 0;padding:16px 18px;border-radius:18px;background:var(--bg)}
 .fb{display:inline-block;margin-top:24px;padding:6px 16px;border-radius:99px;font-size:15px;font-weight:500}.fb.ok{background:var(--okc);color:var(--ok)}.fb.bad{background:var(--badc);color:var(--bad)}
 details{background:var(--bg);border-radius:20px;padding:18px 22px;margin-bottom:10px}
 summary{font-weight:500;cursor:pointer;list-style:none;display:flex;justify-content:space-between}
@@ -129,7 +131,7 @@ const M=[
 "Active recall over recognition: you type Dutch from English, fill gaps and write what you hear, rather than just flipping cards.",
 "Nouns come with de or het as one chunk, and every word sits inside an example sentence.",
 "Practice type moves with strength: translation first, then gap-fill in context, then dictation.",
-"Practice rotates: typing from memory, listening, gap-fills, dictation and sentence building. Words you keep missing get re-taught. Short sessions, as many as you like: up to 5 new words each, with a daily limit you can change in Settings. Extra practice never changes your review schedule.",
+"Practice rotates: typing from memory, listening, gap-fills, dictation and sentence building. Words you keep missing get re-taught. Short sessions, as many as you like: up to 5 new words each, with a daily limit you can change in Settings. Extra practice mixes weak words with old ones from the beginning so nothing fades.",
 "Say every answer aloud. Add 20 minutes of real Dutch listening and one weekly conversation with a tutor or language café.",
 "Audio uses your device’s Dutch voice. If it sounds English, install a Dutch voice in your system settings."];
 const K="nl-a1-v1",IV=[0,1,3,7,14,30,60],$=i=>document.getElementById(i),app=$("app");
@@ -143,74 +145,90 @@ const pickVoice=()=>{try{const v=speechSynthesis.getVoices();VO=v.find(x=>/^nl[-
 try{speechSynthesis.onvoiceschanged=pickVoice;pickVoice()}catch(e){}
 let tt;const toast=m=>{let e=$("toast");if(!e){e=document.createElement("div");e.id="toast";document.body.append(e)}e.textContent=m;e.hidden=false;clearTimeout(tt);tt=setTimeout(()=>e.hidden=true,7000)};
 const NOSND="No sound. Turn off the silent switch, raise the volume, and install a Dutch voice (iPhone: Settings > Accessibility > Spoken Content > Voices).";
+const DLYK=()=>{try{return localStorage.getItem("nl-dly")||"medium"}catch(e){return"medium"}};
+const DLY=()=>({short:600,long:3000}[DLYK()]||1500);
 const SPDK=()=>{try{return localStorage.getItem("nl-spd")||"normal"}catch(e){return"normal"}};
 const SPD=()=>({slow:.75,fast:1.25}[SPDK()]||1);
+const EXP=()=>{try{return localStorage.getItem("nl-exp")=="1"}catch(e){return false}};
+// "Expression": split a sentence at its punctuation, pause between clauses, rise on questions, fall on statements
+function expr(t,r){const q=r||.85;if(!EXP()||t.length<14)return[[t,q]];
+const cl=(t.match(/[^,;:.!?]+[,;:.!?]*/g)||[t]).map(c=>c.trim()).filter(Boolean);
+return cl.map((c,i)=>{const p=c.slice(-1),last=i==cl.length-1;
+return p=="?"?[c,q,0,1.12]:p=="!"?[c,q*1.05,last?0:300,1.08]:/[,;:]/.test(p)?[c,q,260,1.02]:p=="."?[c,q,last?0:380,.94]:[c,q,0,1]})}
 let SID=0;
 // say("text",rate) or say([[text,rate,pauseAfterMs],...]); utterances are chained so each word can be repeated with a pause
-function say(t,r){try{const s=speechSynthesis;if(s.speaking||s.pending)s.cancel();
-const id=++SID,v=VO||pickVoice(),P=Array.isArray(t)?t:[[t,r]];let ok=0;
-const run=i=>{if(id!=SID||i>=P.length)return;const [x,q,gap]=P[i],u=new SpeechSynthesisUtterance(x),rate=Math.min(2,Math.max(.1,(q||.85)*SPD()));
-u.lang=v?v.lang.replace("_","-"):"nl-NL";if(v)u.voice=v;u.rate=rate;let d=0,ft;
+function say(t,r,d){try{const s=speechSynthesis;if(s.speaking||s.pending)s.cancel();
+const id=++SID,v=VO||pickVoice(),P=Array.isArray(t)?t:expr(t,r);let ok=0;
+const run=i=>{if(id!=SID||i>=P.length)return;const [x,q,gap,pit]=P[i],u=new SpeechSynthesisUtterance(x),rate=Math.min(2,Math.max(.1,(q||.85)*SPD()));
+u.lang=v?v.lang.replace("_","-"):"nl-NL";if(v)u.voice=v;u.rate=rate;u.pitch=pit||1;let d=0,ft;
 const nx=()=>{if(d)return;d=1;clearTimeout(ft);setTimeout(()=>run(i+1),gap||0)};
 u.onstart=()=>{ok=1};u.onend=nx;u.onerror=e=>{if(e.error!="canceled"&&e.error!="interrupted")toast("Speech error: "+e.error);nx()};
 ft=setTimeout(nx,3000+x.length*400/rate);
 try{s.speak(u)}catch(e){toast("Speech error: "+(e.message||e))}};
-setTimeout(()=>{run(0);setTimeout(()=>{if(!ok&&id==SID&&!s.speaking)toast(NOSND)},2500)},250)}catch(e){toast("Speech is not available in this browser.")}}
-addEventListener("pointerdown",()=>{try{const u=new SpeechSynthesisUtterance(" ");u.volume=0;speechSynthesis.speak(u)}catch(e){}},{once:true});
+setTimeout(()=>{run(0);setTimeout(()=>{if(!ok&&id==SID&&!s.speaking)toast(NOSND)},2500)},d==null?250:d)}catch(e){toast("Speech is not available in this browser.")}}
+let unl=0;const unlock=()=>{if(unl)return;unl=1;try{const u=new SpeechSynthesisUtterance(" ");u.volume=0;speechSynthesis.speak(u)}catch(e){}};
+["click","touchend"].forEach(ev=>addEventListener(ev,unlock,{once:true,capture:true}));
 const streak=()=>{let t=T(),n=0;if(!S.d.includes(t))t--;while(S.d.includes(t)){n++;t--}return n};
+const spk=(i,g)=>`<button class="spk" data-w="${i}"${g?' data-g="1"':""} aria-label="Listen to the sentence"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg></button>`;
 const hl=s=>s.replace(/\{(.+?)\}/,"<b>$1</b>"),cnt=()=>Object.keys(S.c).length;
 const dueIds=()=>Object.keys(S.c).filter(i=>S.c[i].d<=T());
 const NEWD=()=>{try{return+localStorage.getItem("nl-new")||10}catch(e){return 10}};
 const newCap=()=>Math.max(0,Math.min(NEWD()-(S.n[T()]||0),W.length-cnt())),batch=()=>Math.min(5,newCap());
 function show(v){document.body.classList.remove("in");document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v==v));({p:home,g:gram,m:meth,s:()=>speak()})[v]()}
 function home(){const d=dueIds().length,nw=batch(),n=d+nw,sk=streak(),sol=Object.values(S.c).filter(c=>c.b>=4).length;
-app.innerHTML=`<h2>Today</h2><dl><div><dt>Reviews due</dt><dd>${d}</dd></div><div><dt>New words</dt><dd>${S.n[T()]||0} of ${NEWD()}</dd></div><div><dt>Streak</dt><dd>${sk} day${sk==1?"":"s"}</dd></div></dl><button class="pri" id="go" ${n||cnt()?"":"disabled"}>${n?"Start session":cnt()?"Extra practice":"Done for today"}</button>${!n&&cnt()?'<p class="mut" style="margin-top:14px">Today\u2019s new words and reviews are done. Extra practice keeps you sharp and never changes your review schedule.</p>':""}<h3>Progress</h3><div class="bar"><i style="width:${cnt()/W.length*100}%"></i></div><p class="mut">${cnt()} of ${W.length} words introduced, ${sol} solid.</p>`;
-$("go").onclick=start}
+app.innerHTML=`<h2>Today</h2><dl><div><dt>Reviews due</dt><dd>${d}</dd></div><div><dt>New words</dt><dd>${S.n[T()]||0} of ${NEWD()}</dd></div><div><dt>Streak</dt><dd>${sk} day${sk==1?"":"s"}</dd></div></dl><button class="pri" id="go" ${n||cnt()?"":"disabled"}>${n?"Start session":cnt()?"Extra practice":"Done for today"}</button>${n&&cnt()>=5?'<button class="ghost" id="xp" style="margin:14px 0 0">Practice old words</button>':""}${!n&&cnt()?'<p class="mut" style="margin-top:14px">New words and reviews for today are done. Extra practice mixes your weakest words with old ones from the beginning so nothing fades. Missing one brings it back sooner.</p>':""}<h3>Progress</h3><div class="bar"><i style="width:${cnt()/W.length*100}%"></i></div><p class="mut">${cnt()} of ${W.length} words introduced, ${sol} solid.</p>`;
+$("go").onclick=()=>start();if($("xp"))$("xp").onclick=()=>start(true)}
 let Q=[],qi=0,H=0,N=0,EX=false;
-function start(){const kind=(b,i)=>{const a=b<2?["en2nl","lw"]:b<4?["cloze","ls","build"]:["dict","build"];return a[(i+T())%a.length]};
+function start(fx){const kind=(b,i)=>{const a=b<2?["en2nl","lw"]:b<4?["cloze","ls","build"]:["dict","build"];return a[(i+T())%a.length]};
 let due=dueIds().sort((a,b)=>S.c[a].d-S.c[b].d).slice(0,15).map(i=>({w:+i,k:kind(S.c[i].b,+i)})),nw=[];
 for(let i=0;i<W.length&&nw.length<batch();i++)if(!S.c[i])nw.push(i);
-EX=!due.length&&!nw.length;if(EX)due=Object.keys(S.c).sort((a,b)=>S.c[a].b-S.c[b].b||(S.c[a].u||0)-(S.c[b].u||0)).slice(0,10).map(i=>({w:+i,k:kind(S.c[i].b,+i)}));else due=due.flatMap(x=>{const c=S.c[x.w];return Math.floor((c.l||0)/3)>(c.rt||0)?[{w:x.w,k:"intro",re:1},{w:x.w,k:"mc"}]:[x]});
+EX=fx===true||(!due.length&&!nw.length);if(EX){nw=[];due=pickExtra(10).map(i=>({w:+i,k:kind(S.c[i].b,+i)}))}else due=due.flatMap(x=>{const c=S.c[x.w];return Math.floor((c.l||0)/3)>(c.rt||0)?[{w:x.w,k:"intro",re:1},{w:x.w,k:"mc"}]:[x]});
 Q=[...due,...nw.map(w=>({w,k:"intro"})),...nw.map(w=>({w,k:"mc"}))];qi=0;H=0;N=0;document.body.classList.add("in");step()}
 const near1=(a,b)=>{if(a==b||Math.abs(a.length-b.length)>1)return false;if(typeof lev=="function"&&lev(a,b)==1)return true;if(a.length!=b.length)return false;let i=0;while(a[i]==b[i])i++;return a.slice(0,i)+a[i+1]+a[i]+a.slice(i+2)==b};
-function grade(t,r){if(t.r)return;const c=S.c[t.w];if(!EX){c.b=r?Math.min(6,c.b+1):Math.max(0,c.b-2);c.d=T()+IV[c.b];c.u=Date.now();if(!r)c.l=(c.l||0)+1}N++;H+=r;if(!S.d.includes(T()))S.d.push(T());save();if(!r)Q.push({...t,r:1})}
+function pickExtra(n){const ids=Object.keys(S.c).map(Number),tm=i=>S.c[i].x||S.c[i].u||0,used=new Set(),out=[],sh=a=>a.slice().sort(()=>Math.random()-.5);
+const take=(a,k)=>{for(const i of a){if(out.length>=n||k<=0)break;if(!used.has(i)){used.add(i);out.push(i);k--}}};
+take(ids.slice().sort((a,b)=>S.c[a].b-S.c[b].b||tm(a)-tm(b)),Math.ceil(n*.4));
+take(sh(ids.slice().sort((a,b)=>a-b).slice(0,Math.max(5,Math.ceil(ids.length*.35)))),Math.ceil(n*.3));
+take(sh(ids.slice().sort((a,b)=>tm(a)-tm(b)).slice(0,n*2)),n);
+return sh(out)}
+function grade(t,r){if(t.r)return;const c=S.c[t.w];if(!EX){c.b=r?Math.min(6,c.b+1):Math.max(0,c.b-2);c.d=T()+IV[c.b];c.u=Date.now();if(!r)c.l=(c.l||0)+1}else{c.x=Date.now();if(!r){c.b=Math.max(0,c.b-1);c.d=Math.min(c.d,T());c.u=Date.now();c.l=(c.l||0)+1}}N++;H+=r;if(!S.d.includes(T()))S.d.push(T());save();if(!r)Q.push({...t,r:1})}
 function step(){if(qi>=Q.length)return fin();
 const t=Q[qi],[nl,en,s,tr]=W[t.w],tg=s.match(/\{(.+?)\}/)[1],full=s.replace(/[{}]/g,""),
 h=`<div class="top"><button class="x" id="x" aria-label="Close session">×</button><div class="bar"><i style="width:${qi/Q.length*100}%"></i></div></div>`;
-if(t.k=="intro"){app.innerHTML=h+`<h3>${t.re?"Let\u2019s look at this again":"New word"}</h3><div class="big">${nl}</div><div class="mean">${en}</div>${window.guide?guide(t.w,1):""}<p class="ex">${hl(s)}<br><i>${tr}</i></p><button class="ghost" id="sy">Listen</button><button class="ghost" id="sl">Slow</button><button class="pri" id="ok">Got it</button>`;
-$("sy").onclick=()=>say([[nl,.5,700],[nl,.7,800],[full,.75]]);$("sl").onclick=()=>say([[nl,.35,900],[nl,.45,900],[full,.5]]);$("ok").onclick=()=>{if(t.re){const c=S.c[t.w];c.b=0;c.d=T();c.u=Date.now();c.rt=Math.floor((c.l||0)/3)}else{S.c[t.w]={b:0,d:T(),u:Date.now()};S.n[T()]=(S.n[T()]||0)+1}save();qi++;step()};say([[nl,.5,700],[nl,.7]]);return}
+if(t.k=="intro"){app.innerHTML=h+`<h3>${t.re?"Let\u2019s look at this again":"New word"}</h3><div class="big">${nl}</div><div class="mean">${en}</div>${window.guide?guide(t.w,1):""}<div class="ex"><div>${hl(s)}<br><i>${tr}</i></div>${spk(t.w)}</div><button class="ghost" id="sy">Listen</button><button class="ghost" id="sl">Slow</button><button class="pri" id="ok">Got it</button>`;
+$("sy").onclick=()=>say([[nl,.5,700],[nl,.7,800],[full,.75]]);$("sl").onclick=()=>say([[nl,.35,900],[nl,.45,900],[full,.5]]);$("ok").onclick=()=>{if(t.re){const c=S.c[t.w];c.b=0;c.d=T();c.u=Date.now();c.rt=Math.floor((c.l||0)/3)}else{S.c[t.w]={b:0,d:T(),u:Date.now()};S.n[T()]=(S.n[T()]||0)+1}save();qi++;step()};say([[nl,.5,700],[nl,.7]],0,DLY());return}
 if(t.k=="mc"||t.k=="lw"||t.k=="ls"){const sen=t.k=="ls",good=sen?tr:en,
 pool=[...new Set(W.map(x=>sen?x[3]:x[1]))].filter(x=>x!=good).sort(()=>Math.random()-.5).slice(0,3),o=[good,...pool].sort(()=>Math.random()-.5),
 head=t.k=="mc"?`<h3>Choose the meaning</h3><div class="big">${nl}</div>${window.guide?guide(t.w,0):""}`:`<h3>Listen and choose the ${sen?"translation":"meaning"}</h3><button class="ghost" id="pl">Play</button><button class="ghost" id="ps">Slow</button>`,
-aud=()=>say(t.k=="mc"?[[nl,.6]]:sen?[[full,.75]]:[[nl,.6,600],[nl,.8]]);
-app.innerHTML=h+head+`<div id="opts">${o.map(x=>`<button class="opt">${x}</button>`).join("")}</div><div id="fb"></div><button class="pri" id="ok" hidden>Continue</button>`;
-if($("pl")){$("pl").onclick=aud;$("ps").onclick=()=>say(sen?[[full,.5]]:[[nl,.4,700],[nl,.5]])}
-$("opts").onclick=e=>{const b=e.target.closest(".opt");if(!b||$("opts").dataset.d)return;$("opts").dataset.d=1;const r=b.textContent==good;grade(t,r);
+aud=d=>say(t.k=="mc"?[[nl,.6]]:sen?[[full,.75]]:[[nl,.6,600],[nl,.8]],0,d);
+let td=0;app.innerHTML=h+head+`<div id="opts">${o.map(x=>`<button class="opt">${x}</button>`).join("")}</div><div id="fb"></div><button class="pri" id="ok" hidden>Continue</button>`;
+if($("pl")){$("pl").onclick=()=>aud();$("ps").onclick=()=>say(sen?[[full,.5]]:[[nl,.4,700],[nl,.5]])}
+$("opts").onclick=e=>{const b=e.target.closest(".opt");if(!b||$("opts").dataset.d)return;$("opts").dataset.d=1;td=Date.now();const r=b.textContent==good;grade(t,r);
 [...$("opts").children].forEach(x=>{x.disabled=true;if(x.textContent==good)x.classList.add("good");else if(x==b)x.classList.add("miss")});
-$("fb").innerHTML=`<div class="fb ${r?"ok":"bad"}">${r?"Correct":"Not quite"}</div>`+(t.k=="mc"?"":sen?`<p class="ex">${hl(s)}</p>`:`<div class="big" style="margin-top:16px">${nl}</div>${window.guide?guide(t.w,0):""}`);
-if(t.k=="mc")say([[nl,.6]]);$("ok").hidden=false;setTimeout(()=>$("ok").focus(),60)};
-$("ok").onclick=()=>{qi++;step()};aud();return}
-if(t.k=="build"){const wds=full.split(" "),lab=wds.map(w=>w.toLowerCase().replace(/[.,!?]/g,"")),ord=wds.map((_,i)=>i).sort(()=>Math.random()-.5);let pick=[],done=false;
+$("fb").innerHTML=`<div class="fb ${r?"ok":"bad"}">${r?"Correct":"Not quite"}</div>`+(t.k=="mc"?"":sen?`<div class="ex"><div>${hl(s)}</div>${spk(t.w)}</div>`:`<div class="big" style="margin-top:16px">${nl}</div>${window.guide?guide(t.w,0):""}`);
+if(t.k=="mc")say([[nl,.55,500],[nl,.75]],0,150);$("ok").hidden=false;setTimeout(()=>$("ok").focus(),60)};
+$("ok").onclick=()=>{if(Date.now()-td<600)return;qi++;step()};aud(DLY());return}
+if(t.k=="build"){const wds=full.split(" "),lab=wds.map(w=>w.toLowerCase().replace(/[.,!?]/g,"")),ord=wds.map((_,i)=>i).sort(()=>Math.random()-.5);let pick=[],done=false,t1=0;
 app.innerHTML=h+`<h3>Build the sentence</h3><div class="big2">${tr}</div><div class="tiles" id="bd"></div><div class="tiles" id="pl2"></div><div id="fb"></div><button class="pri" id="ok" disabled>Check</button>`;
 const draw=()=>{$("bd").innerHTML=pick.map(i=>`<button class="tile on" data-i="${i}">${lab[i]}</button>`).join("");$("pl2").innerHTML=ord.filter(i=>!pick.includes(i)).map(i=>`<button class="tile" data-i="${i}">${lab[i]}</button>`).join("");$("ok").disabled=pick.length!=wds.length};
 const tap=e=>{const b=e.target.closest(".tile");if(!b||done)return;const i=+b.dataset.i;pick=pick.includes(i)?pick.filter(x=>x!=i):[...pick,i];draw()};
 $("bd").onclick=tap;$("pl2").onclick=tap;draw();
-$("ok").onclick=()=>{if(done){qi++;return step()}done=true;const r=pick.map(i=>nz(wds[i])).join(" ")==wds.map(nz).join(" ");grade(t,r);
-$("fb").innerHTML=`<div class="fb ${r?"ok":"bad"}">${r?"Correct":"Not quite"}</div><p class="ex">${hl(s)}<br><i>${tr}</i></p>`;say(full,.8);$("ok").textContent="Continue";$("ok").disabled=false;setTimeout(()=>$("ok").focus(),60)};return}
+$("ok").onclick=()=>{if(done){if(Date.now()-t1<600)return;qi++;return step()}done=true;t1=Date.now();const r=pick.map(i=>nz(wds[i])).join(" ")==wds.map(nz).join(" ");grade(t,r);
+$("fb").innerHTML=`<div class="fb ${r?"ok":"bad"}">${r?"Correct":"Not quite"}</div><div class="ex"><div>${hl(s)}<br><i>${tr}</i></div>${spk(t.w)}</div>`;say(full,.75,150);$("ok").textContent="Continue";$("ok").disabled=false;setTimeout(()=>$("ok").focus(),60)};return}
 const ans=t.k=="en2nl"?nl:t.k=="cloze"?tg:full,art=/^(de|het) /.test(nl),
 p=t.k=="en2nl"?`<h3>Translate to Dutch</h3><div class="big">${en}</div>${art?'<div class="mut">Include de or het.</div>':""}`
-:t.k=="cloze"?`<h3>Fill the gap</h3><div class="big2">${s.replace(/\{.+?\}/,"_____")}</div><div class="tr">${tr}</div>${nz(tg)!=nz(nl.replace(/^(de|het) /,""))?`<div class="mut">Form of: ${nl}</div>`:""}`
+:t.k=="cloze"?`<h3>Fill the gap</h3><div class="row"><div class="big2">${s.replace(/\{.+?\}/,"_____")}</div>${spk(t.w,1)}</div><div class="tr">${tr}</div>${nz(tg)!=nz(nl.replace(/^(de|het) /,""))?`<div class="mut">Form of: ${nl}</div>`:""}`
 :`<h3>Listen and type the sentence</h3><button class="ghost" id="sy">Play again</button>`;
 app.innerHTML=h+p+`<input id="in" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"><div id="fb"></div><button class="pri" id="ok">Check</button>`;
-const inp=$("in"),ok=$("ok");let done=false;
+const inp=$("in"),ok=$("ok");let done=false,t0=0;
 if($("sy"))$("sy").onclick=()=>say(full);
-const go=()=>{if(done){qi++;return step()}
+const go=()=>{if(done){if(Date.now()-t0<600)return;qi++;return step()}
 done=true;inp.disabled=true;const ex=nz(inp.value)==nz(ans),nr=!ex&&ans.length>=5&&near1(nz(inp.value),nz(ans)),r=ex||nr;
 grade(t,r);
-$("fb").innerHTML=`<div class="fb ${r?"ok":"bad"}">${ex?"Correct":nr?"Almost: check the spelling":"Not quite"}</div>${ex||t.k=="dict"?"":`<div class="big2">${ans}</div>`}<p class="ex">${hl(s)}<br><i>${tr}</i></p>${window.guide?guide(t.w,0):""}`;
-say(t.k=="en2nl"?nl:full);ok.textContent="Continue";setTimeout(()=>ok.focus(),60)};
+$("fb").innerHTML=`<div class="fb ${r?"ok":"bad"}">${ex?"Correct":nr?"Almost: check the spelling":"Not quite"}</div>${ex||t.k=="dict"?"":`<div class="big2">${ans}</div>`}<div class="ex"><div>${hl(s)}<br><i>${tr}</i></div>${spk(t.w)}</div>${window.guide?guide(t.w,0):""}`;
+t0=Date.now();say(t.k=="en2nl"?[[nl,.55,500],[nl,.75]]:[[full,.75]],0,150);ok.textContent="Continue";setTimeout(()=>ok.focus(),60)};
 ok.onclick=go;inp.onkeydown=e=>{if(e.key=="Enter")go()};
-if(t.k=="dict")say(full);else inp.focus()}
+if(t.k=="dict")say(full,0,DLY());else inp.focus()}
 function fin(){app.innerHTML=`<h2>Session complete</h2><p class="mut">${H} of ${N} correct. Missed words come back sooner.</p><button class="pri" id="bk">Back to today</button>`;$("bk").onclick=()=>show("p")}
 function gram(){app.innerHTML=G.map(([a,b])=>`<details><summary>${a}</summary><p>${b}</p></details>`).join("")}
 const TH=()=>{try{return localStorage.getItem("nl-theme")||"system"}catch(e){return"system"}};
@@ -218,18 +236,18 @@ function applyTheme(t){const d=document.documentElement;t=="system"?d.removeAttr
 try{t=="system"?localStorage.removeItem("nl-theme"):localStorage.setItem("nl-theme",t)}catch(e){}
 const dk=t=="dark"||(t=="system"&&matchMedia("(prefers-color-scheme:dark)").matches);document.querySelector('meta[name="theme-color"]').content=dk?"#131314":"#f8fafd"}
 function meth(){const t=TH();
-app.innerHTML=`<h2>Settings</h2><h3>Appearance</h3><div class="seg">${["light","dark","system"].map(x=>`<button data-t="${x}"${x==t?' class="on"':""}>${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div><h3>New words per day</h3><div class="seg" id="nseg">${[5,10,15].map(n=>`<button data-n="${n}"${n==NEWD()?' class="on"':""}>${n}</button>`).join("")}</div><h3>Sync</h3><div id="sync"></div><h3>Voice</h3><p class="mut" id="vs"></p><div class="seg" id="spd">${["slow","normal","fast"].map(x=>`<button data-s="${x}"${x==SPDK()?' class="on"':""}>${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div><button class="ghost" id="vt" style="margin-top:14px">Test voice</button><h3>Speech check on this device</h3><div class="seg" id="asrseg">${[["off","Off"],["base","Base"],["small","Small"]].map(([v,l])=>`<button data-m="${v}"${v==(localStorage.getItem("nl-asr")||"off")?' class="on"':""}>${l}</button>`).join("")}</div><p class="mut" style="margin-top:12px">Base is faster (roughly 110 MB). Small is more accurate (roughly 430 MB). Downloaded once, then it works offline.</p><p class="mut" id="asrs"></p><button class="ghost" id="asrx" style="margin-top:0">Remove download</button><h3>About</h3><details><summary>How this course works</summary><ul style="padding-left:18px;margin:12px 0 0;color:var(--mut);font-size:16px">${M.map(x=>`<li>${x}</li>`).join("")}</ul></details>`;
+app.innerHTML=`<h2>Settings</h2><h3>Appearance</h3><div class="seg">${["light","dark","system"].map(x=>`<button data-t="${x}"${x==t?' class="on"':""}>${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div><h3>New words per day</h3><div class="seg" id="nseg">${[5,10,15].map(n=>`<button data-n="${n}"${n==NEWD()?' class="on"':""}>${n}</button>`).join("")}</div><h3>Sync</h3><div id="sync"></div><h3>Voice</h3><p class="mut" id="vs"></p><p class="mut" style="margin:14px 0 8px">Speed</p><div class="seg" id="spd">${["slow","normal","fast"].map(x=>`<button data-s="${x}"${x==SPDK()?' class="on"':""}>${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div><p class="mut" style="margin:14px 0 8px">Expression in sentences (pauses, rising questions)</p><div class="seg" id="exp">${["Off","On"].map(x=>`<button data-e="${x=="On"?1:0}"${(x=="On")==EXP()?' class="on"':""}>${x}</button>`).join("")}</div><p class="mut" style="margin:14px 0 8px">Pause before audio starts</p><div class="seg" id="dly">${["short","medium","long"].map(x=>`<button data-d="${x}"${x==DLYK()?' class="on"':""}>${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div><button class="ghost" id="vt" style="margin-top:14px">Test voice</button><h3>About</h3><details><summary>How this course works</summary><ul style="padding-left:18px;margin:12px 0 0;color:var(--mut);font-size:16px">${M.map(x=>`<li>${x}</li>`).join("")}</ul></details>`;
 app.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{applyTheme(b.dataset.t);app.querySelectorAll(".seg button").forEach(x=>x.classList.toggle("on",x==b))});
 $("nseg").querySelectorAll("button").forEach(b=>b.onclick=()=>{try{localStorage.setItem("nl-new",b.dataset.n)}catch(e){}$("nseg").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b))});
 const vv=pickVoice();$("vs").textContent=vv?"Dutch voice found: "+vv.name+". On iPhone, the silent switch must be off to hear it.":"No Dutch voice found. Install one in your device\u2019s text-to-speech settings (iPhone: Settings > Accessibility > Spoken Content > Voices > Dutch).";
 $("vt").onclick=()=>say("Goedemorgen, hoe gaat het met u?");
+$("exp").querySelectorAll("button").forEach(b=>b.onclick=()=>{try{localStorage.setItem("nl-exp",b.dataset.e)}catch(e){}$("exp").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b));say("Goedemorgen, hoe gaat het met u?",.75)});
+$("dly").querySelectorAll("button").forEach(b=>b.onclick=()=>{try{localStorage.setItem("nl-dly",b.dataset.d)}catch(e){}$("dly").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b))});
 $("spd").querySelectorAll("button").forEach(b=>b.onclick=()=>{try{localStorage.setItem("nl-spd",b.dataset.s)}catch(e){}$("spd").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b));say("Goedemorgen, hoe gaat het met u?")});
-if(window.ASR){const ap=()=>{const el=$("asrs");if(el)el.textContent=ASR.text()};ASR.ui1=ap;ap();
-$("asrseg").querySelectorAll("button").forEach(b=>b.onclick=()=>{try{localStorage.setItem("nl-asr",b.dataset.m)}catch(e){}$("asrseg").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b));ap();if(b.dataset.m!="off")ASR.load().catch(()=>{})});
-$("asrx").onclick=()=>{try{localStorage.setItem("nl-asr","off")}catch(e){}ASR.remove();$("asrseg").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.m=="off"))}}
 window.paintSync&&paintSync()}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.v));
-app.addEventListener("click",e=>{if(e.target.id=="x")show("p")});
+app.addEventListener("click",e=>{if(e.target.id=="x")return show("p");const b=e.target.closest(".spk");if(!b)return;const f=W[+b.dataset.w][2];
+if(b.dataset.g){const [a,c]=f.split(/\{.+?\}/),x=a.trim(),P=[[x,.75,900],[c.trim().replace(/^[,.!?]\s*/,""),.75]].filter(p=>p[0]);say(P,0,x?250:900)}else say(f.replace(/[{}]/g,""),.75)});
 applyTheme(TH());matchMedia("(prefers-color-scheme:dark)").addEventListener("change",()=>{if(TH()=="system")applyTheme("system")});
 show("p");
-</script><script src="pron.js" defer></script><script src="asr.js" defer></script><script src="extra.js" defer></script><script>if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js")</script></body></html>
+</script><script src="pron.js" defer></script><script src="extra.js" defer></script><script>if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js")</script></body></html>

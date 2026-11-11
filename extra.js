@@ -50,13 +50,15 @@ try{await doSync();cfg.on=true;persist();bad=false;msg=stamp();paintSync();if($(
 catch(e){const x=$("er"),y=$("si");if(x)x.textContent=e.message;if(y)y.disabled=false}}
 if(cfg.on)sync();
 // ---- Speech practice (only when the local Mac server answers) ----
-document.querySelector('nav [data-v="s"]').hidden=false;
 let ENGINE="",CUR="";const SR=window.SpeechRecognition||window.webkitSpeechRecognition,IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform=="MacIntel"&&navigator.maxTouchPoints>1),SA=navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;
+// speaking practice is not offered on iPhone/iPad
+document.querySelector('nav [data-v="s"]').hidden=IOS;
+try{["nl-asr","nl-asr-busy"].forEach(k=>localStorage.removeItem(k));caches.keys().then(ks=>ks.filter(k=>/transformers/i.test(k)).forEach(k=>caches.delete(k)))}catch(x){}
 fetch("api/health").then(r=>r.ok?r.json():null).then(j=>{if(j&&j.speech){ENGINE="whisper";engNote();setInterval(()=>{if(!document.hidden)fetch("api/health").catch(()=>{})},3e5)}}).catch(()=>{});
-const engine=()=>ENGINE=="whisper"?"whisper":window.ASR&&asrModel()!="off"&&!ASR.err?"phone":SR&&!(IOS&&SA)?"browser":"dictate";
+const engine=()=>ENGINE=="whisper"?"whisper":SR&&!(IOS&&SA)?"browser":"dictate";
 function engNote(){const el=$("eng"),m=engine();if(!el)return;
-el.textContent={phone:window.ASR?ASR.text():"",whisper:"Whisper on your Mac listens and checks your pronunciation.",browser:"Your browser’s speech recognition listens in Dutch.",dictate:IOS&&SA?"iPhone home-screen apps can’t use live speech recognition. Dictate with the keyboard microphone below, or open this page in Safari to get the Record button.":"This browser has no speech recognition. Dictate with the keyboard microphone below."}[m];
-const rc=$("rc");if(rc){rc.hidden=m=="dictate";if(m=="phone")rc.disabled=!(ASR.ready&&ASR.ready==ASRM[asrModel()])}if(m=="dictate")dictate()}
+el.textContent={whisper:"Whisper on your Mac listens and checks your pronunciation.",browser:"Your browser’s speech recognition listens in Dutch.",dictate:IOS&&SA?"iPhone home-screen apps can’t use live speech recognition. Dictate with the keyboard microphone below, or open this page in Safari to get the Record button.":"This browser has no speech recognition. Dictate with the keyboard microphone below."}[m];
+const rc=$("rc");if(rc)rc.hidden=m=="dictate";if(m=="dictate")dictate();}
 function dictate(){const d=$("dict");if(!d||d.firstChild)return;
 d.innerHTML=`<input id="dt" lang="nl" placeholder="Tap here, then the keyboard microphone" ${FA}><button class="pri" id="dc">Check</button><p class="mut">For Dutch dictation, add the Dutch keyboard (Settings > General > Keyboard > Keyboards) and switch to it with the globe key before tapping the microphone.</p>`;
 $("dc").onclick=()=>{const v=$("dt").value.trim();if(v)result(CUR,{text:v,words:v.split(/\s+/).map(w=>({w,p:1}))})}}
@@ -67,21 +69,12 @@ R.onresult=ev=>{got=true;const x=ev.results[0][0].transcript;result(full,{text:x
 R.onerror=ev=>{got=true;if(ev.error=="no-speech")out.textContent="Nothing heard. Try again, a little closer to the microphone.";else if(ev.error!="aborted"){out.textContent="Speech recognition is blocked here ("+ev.error+"). Use keyboard dictation below.";dictate()}};
 R.onend=()=>{SRI=null;b.textContent="Record";if(!got)out.textContent="Nothing heard. Try again."};
 try{R.start();b.textContent="Stop";out.textContent=""}catch(x){SRI=null;out.textContent="Could not start speech recognition. Use keyboard dictation below.";dictate()}}
-async function recordP(full){const b=$("rc"),out=$("res");if(rec){rec.stop();return}
-try{const st=await navigator.mediaDevices.getUserMedia({audio:true}),ch=[];rec=new MediaRecorder(st);rec.ondataavailable=ev=>ch.push(ev.data);
-rec.onstop=async()=>{st.getTracks().forEach(x=>x.stop());const type=rec.mimeType||"audio/mp4";rec=null;b.textContent="Checking";b.disabled=true;
-try{const a=await pcm(new Blob(ch,{type}));let s2=0;for(let i=0;i<a.length;i+=8)s2+=a[i]*a[i];
-if(Math.sqrt(s2/(a.length/8))<.003)out.textContent="Nothing heard. Check your microphone and try again.";
-else{const text=await ASR.run(a);if(!text)out.textContent="Nothing heard. Try again.";else result(full,{text,words:text.split(/\s+/).filter(Boolean).map(w=>({w,p:1}))})}}
-catch(x){out.textContent="Could not check: "+x.message}
-b.textContent="Record";b.disabled=false};
-rec.start();b.textContent="Stop";out.textContent=""}catch(x){out.textContent="Microphone unavailable: "+x.message}}
-function record(full){const m=engine();if(m=="whisper")return recordW(full);if(m=="phone")return recordP(full);if(m=="browser")return recordB(full);dictate()}
+function record(full){const m=engine();if(m=="whisper")return recordW(full);if(m=="browser")return recordB(full);dictate()}
 let SQ=null,rec=null;const NUM="nul een twee drie vier vijf zes zeven acht negen tien".split(" ");
 function speak(){if(SQ===null){const ids=Object.keys(S.c);SQ=ids.length?+ids[Math.floor(Math.random()*ids.length)]:Math.floor(Math.random()*10)}
 const full=W[SQ][2].replace(/[{}]/g,"");
 app.innerHTML=`<h3>Say this sentence</h3><div class="big2">${full}</div><div class="tr">${W[SQ][3]}</div>${window.sguide?sguide(full):""}<button class="ghost" id="ls">Listen first</button><button class="ghost" id="sl">Slow</button><button class="pri" id="rc">Record</button><p class="mut" id="eng" style="margin-top:12px"></p><div id="dict"></div><div id="res"></div><button class="ghost" id="nx">Another sentence</button>`;
-$("ls").onclick=()=>say(full);$("sl").onclick=()=>say(full,.55);$("nx").onclick=()=>{SQ=null;speak()};$("rc").onclick=()=>record(full);CUR=full;engNote();if(engine()=="phone"){ASR.ui2=engNote;ASR.load().catch(()=>{})}}
+$("ls").onclick=()=>say(full);$("sl").onclick=()=>say(full,.55);$("nx").onclick=()=>{SQ=null;speak()};$("rc").onclick=()=>record(full);CUR=full;engNote()}
 async function recordW(full){const b=$("rc"),out=$("res");if(rec){rec.stop();return}
 try{const st=await navigator.mediaDevices.getUserMedia({audio:true}),ch=[];rec=new MediaRecorder(st);
 rec.ondataavailable=e=>ch.push(e.data);
