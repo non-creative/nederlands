@@ -2,7 +2,9 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 function merge(a,b){const o={c:{},n:{},d:[]},A=a.c||{},B=b.c||{};
 for(const i of new Set([...Object.keys(A),...Object.keys(B)])){const x=A[i],y=B[i];o.c[i]=!x?y:!y?x:(y.u||0)>(x.u||0)?y:x}
 const An=a.n||{},Bn=b.n||{};for(const k of new Set([...Object.keys(An),...Object.keys(Bn)]))o.n[k]=Math.max(An[k]||0,Bn[k]||0);
-o.d=[...new Set([...(a.d||[]),...(b.d||[])])].sort((p,q)=>p-q);return o}
+o.d=[...new Set([...(a.d||[]),...(b.d||[])])].sort((p,q)=>p-q);
+const Ah=a.h||{},Bh=b.h||{};o.h={};for(const k of new Set([...Object.keys(Ah),...Object.keys(Bh)])){const x=Ah[k],y=Bh[k];o.h[k]=!x?y:!y?x:(y[1]>x[1]?y:x)}
+return o}
 function lev(a,b){const d=Array.from({length:a.length+1},(_,i)=>[i,...Array(b.length).fill(0)]);for(let j=1;j<=b.length;j++)d[0][j]=j;
 for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]!=b[j-1]));return d[a.length][b.length]}
 const sc=(a,b)=>a==b?0:lev(a,b)<=Math.max(1,Math.round(Math.max(a.length,b.length)*.3))?.5:1;
@@ -50,15 +52,15 @@ try{await doSync();cfg.on=true;persist();bad=false;msg=stamp();paintSync();if($(
 catch(e){const x=$("er"),y=$("si");if(x)x.textContent=e.message;if(y)y.disabled=false}}
 if(cfg.on)sync();
 // ---- Speech practice (only when the local Mac server answers) ----
-let ENGINE="",CUR="";const SR=window.SpeechRecognition||window.webkitSpeechRecognition,IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform=="MacIntel"&&navigator.maxTouchPoints>1),SA=navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;
+let ENGINE="",CUR="",HEALTH=null,pm=0;const SR=window.SpeechRecognition||window.webkitSpeechRecognition,IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform=="MacIntel"&&navigator.maxTouchPoints>1),SA=navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;
 // speaking practice is not offered on iPhone/iPad
 document.querySelector('nav [data-v="s"]').hidden=IOS;
 try{["nl-asr","nl-asr-busy"].forEach(k=>localStorage.removeItem(k));caches.keys().then(ks=>ks.filter(k=>/transformers/i.test(k)).forEach(k=>caches.delete(k)))}catch(x){}
-fetch("api/health").then(r=>r.ok?r.json():null).then(j=>{if(j&&j.speech){ENGINE="whisper";engNote();setInterval(()=>{if(!document.hidden)fetch("api/health").catch(()=>{})},3e5)}}).catch(()=>{});
+fetch("api/health").then(r=>r.ok?r.json():null).then(j=>{if(j&&j.speech){ENGINE="whisper";HEALTH=j;engNote();if(j.loading)pollModel();setInterval(()=>{if(!document.hidden)fetch("api/health").catch(()=>{})},3e5)}}).catch(()=>{});
 const engine=()=>ENGINE=="whisper"?"whisper":SR&&!(IOS&&SA)?"browser":"dictate";
 function engNote(){const el=$("eng"),m=engine();if(!el)return;
-el.textContent={whisper:"Whisper on your Mac listens and checks your pronunciation.",browser:"Your browser’s speech recognition listens in Dutch.",dictate:IOS&&SA?"iPhone home-screen apps can’t use live speech recognition. Dictate with the keyboard microphone below, or open this page in Safari to get the Record button.":"This browser has no speech recognition. Dictate with the keyboard microphone below."}[m];
-const rc=$("rc");if(rc)rc.hidden=m=="dictate";if(m=="dictate")dictate();}
+el.textContent={whisper:HEALTH&&HEALTH.loading?"The speech model is loading. The first time it downloads, which can take a few minutes.":"Whisper ("+((HEALTH&&HEALTH.models&&HEALTH.models[HEALTH.model]||{}).label||"Mac").toLowerCase()+") on your Mac listens and checks your pronunciation.",browser:"Your browser’s speech recognition listens in Dutch.",dictate:IOS&&SA?"iPhone home-screen apps can’t use live speech recognition. Dictate with the keyboard microphone below, or open this page in Safari to get the Record button.":"This browser has no speech recognition. Dictate with the keyboard microphone below."}[m];
+const rc=$("rc");if(rc){rc.hidden=m=="dictate";rc.disabled=m=="whisper"&&!!(HEALTH&&HEALTH.loading)}if(m=="dictate")dictate();}
 function dictate(){const d=$("dict");if(!d||d.firstChild)return;
 d.innerHTML=`<input id="dt" lang="nl" placeholder="Tap here, then the keyboard microphone" ${FA}><button class="pri" id="dc">Check</button><p class="mut">For Dutch dictation, add the Dutch keyboard (Settings > General > Keyboard > Keyboards) and switch to it with the globe key before tapping the microphone.</p>`;
 $("dc").onclick=()=>{const v=$("dt").value.trim();if(v)result(CUR,{text:v,words:v.split(/\s+/).map(w=>({w,p:1}))})}}
@@ -95,3 +97,16 @@ if(!S.d.includes(T())){S.d.push(T());save()}
 $("res").innerHTML=`<div class="fb ${pct>=80?"ok":"bad"}">${pct}% match</div><p class="big2">${html}</p><p class="mut">${fix.length?fix.join("<br>"):"Clean. Try another sentence."}</p><p class="mut">I heard: ${esc(j.text)}</p>`}
 async function pcm(blob){const x=new (window.AudioContext||webkitAudioContext)(),b=await x.decodeAudioData(await blob.arrayBuffer());x.close();
 const o=new OfflineAudioContext(1,Math.ceil(b.duration*16e3),16e3),s=o.createBufferSource();s.buffer=b;s.connect(o.destination);s.start();return (await o.startRendering()).getChannelData(0)}
+
+// ---- Mac only: choose the speech model (Settings > Speech accuracy) ----
+function paintModels(){const el=$("mm");if(!el)return;
+if(ENGINE!="whisper"||!HEALTH||!HEALTH.models){el.innerHTML="";return}
+const h=HEALTH,cur=h.models[h.model]||{label:"Custom",note:""},
+st=h.loading?"Loading the "+cur.label.toLowerCase()+" model. The first time it downloads, which can take a few minutes.":h.error?"Could not load it: "+esc(h.error):"Ready. "+esc(cur.note);
+el.innerHTML=`<h3>Speech accuracy (Mac)</h3><div class="seg" id="mseg">${Object.entries(h.models).map(([k,m])=>`<button data-k="${k}"${k==h.model?' class="on"':""}>${esc(m.label)}</button>`).join("")}</div><p class="mut" style="margin-top:12px">${st}</p>`;
+$("mseg").onclick=async ev=>{const b=ev.target.closest("button");if(!b||b.dataset.k==h.model)return;
+try{const r=await fetch("api/model",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:b.dataset.k})});if(r.ok)HEALTH=await r.json()}catch(x){}
+paintModels();pollModel()};
+if(h.loading)pollModel()}
+function pollModel(){clearTimeout(pm);pm=setTimeout(async()=>{try{const r=await fetch("api/health");HEALTH=await r.json()}catch(x){}
+paintModels();engNote();if(HEALTH&&HEALTH.loading)pollModel()},2000)}
