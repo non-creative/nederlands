@@ -41,7 +41,7 @@ return{k:"dq",p:{h:"Choose the right verb form",big:pr+" ___",sub:v[0]+" (to "+v
 function dOrder(){const ids=Object.keys(S.c).map(Number).filter(i=>W[i][2].replace(/[{}]/g,"").split(" ").length>=5);return ids.length<3?null:shuf(ids).slice(0,8).map(w=>({w,k:"build"}))}
 function startDrill(nm){const q=({Numbers:dNum,Time:dTime,Prices:dPrice,"de or het":dDeHet,"Verb endings":dVerb,"Word order":dOrder})[nm]();
 if(!q||!q.length){toast("Learn a few more words first, then try this drill.");return}
-DR=nm;Q=q;qi=0;H=0;N=0;EX=true;document.body.classList.add("in");step()}
+ACTIVE=false;DR=nm;Q=q;qi=0;H=0;N=0;EX=true;document.body.classList.add("in");step()}
 // ---------- one drill question (called from step) ----------
 function dqStep(t){const p=t.p;
 app.innerHTML=`<div class="top"><button class="x" id="x" aria-label="Close session">×</button><div class="bar"><i style="width:${qi/Q.length*100}%"></i></div></div><h3>${p.h}</h3>`+(p.big?`<div class="big">${p.big}</div>`:"")+(p.sub?`<div class="tr">${p.sub}</div>`:"")+(p.say?`<button class="ghost" id="pl">Play</button><button class="ghost" id="ps">Slow</button>`:"")
@@ -55,7 +55,7 @@ else{const chk=()=>{const v=$("in").value.replace(/\D/g,"");$("in").disabled=tru
 $("ok").onclick=()=>{if(Date.now()-td<600)return;qi++;step()};
 if(p.say){$("pl").onclick=()=>say(p.say);$("ps").onclick=()=>say(p.slow||p.say);say(p.say,0,DLY())}}
 // ---------- Learn tab ----------
-function learn(){app.innerHTML=`<h2>Learn</h2><h3>Drills</h3><div class="grid">${["Numbers","Time","Prices","de or het","Verb endings","Word order"].map(n=>`<button class="card" data-dr="${n}">${n}</button>`).join("")}</div><h3>Dialogues</h3><div class="list">${DIALOGUES.map((d,i)=>`<button class="card" data-dl="${i}"><span>${d.t}</span><small>${d.l.length} lines</small></button>`).join("")}</div><h3>Grammar notes</h3>`+G.map(([a,b])=>`<details><summary>${a}</summary><p>${b}</p></details>`).join("")}
+function learn(){app.innerHTML=`<h2>Learn</h2><h3>Drills</h3><div class="grid">${["Numbers","Time","Prices","de or het","Verb endings","Word order"].map(n=>`<button class="card" data-dr="${n}">${n}</button>`).join("")}</div><h3>Grammar practice</h3><button class="card" data-grammar style="width:100%">Practice grammar <small>9 quick questions · word order, verbs, articles</small></button><h3>Dialogues</h3><div class="list">${DIALOGUES.map((d,i)=>`<button class="card" data-dl="${i}"><span>${d.t}</span><small>${d.l.length} lines</small></button>`).join("")}</div><h3>Grammar guide</h3>`+G.map(([a,b])=>`<details><summary>${a}</summary><p>${b}</p></details>`).join("")}
 const respLine=l=>l.split(/\s+/).map(t=>{const q=PW[PL(t)],tail=(t.match(/[^\p{L}]+$/u)||[""])[0];return(q?q[0]:PL(t))+tail}).join(" ");
 function dialog(i){const d=DIALOGUES[i],icon=spk(0).replace('data-w="0"','data-dline="@"');
 app.innerHTML=`<h2>${d.t}</h2><div id="dl">${d.l.map((l,k)=>`<div class="ex" style="margin-top:12px"><div><b>${k%2?"B":"A"}</b> ${l[0]}<div class="tr dtr" hidden>${l[1]}</div><div class="resp dpr" hidden style="font-size:18px">${respLine(l[0])}</div></div>${icon.replace("@",k)}</div>`).join("")}</div>
@@ -64,7 +64,7 @@ app.innerHTML=`<h2>${d.t}</h2><div id="dl">${d.l.map((l,k)=>`<div class="ex" sty
 const tog=(id,cls,off)=>{$(id).onclick=()=>{const hs=document.querySelectorAll(cls),on=hs[0].hidden;hs.forEach(x=>x.hidden=!on);$(id).textContent=on?off:$(id).dataset.l};$(id).dataset.l=$(id).textContent};tog("dte",".dtr","Hide English");tog("dsp",".dpr","Hide pronunciation");
 $("dpa").onclick=()=>say(d.l.map(l=>[l[0],.8,900]),0,250);$("dbk").onclick=learn;
 $("opts").onclick=e=>{const b=e.target.closest(".opt");if(!b||$("opts").dataset.d)return;$("opts").dataset.d=1;const k=[...$("opts").children],ok=k.indexOf(b)==d.a;k.forEach((x,j)=>{x.disabled=true;if(j==d.a)x.classList.add("good");else if(x==b)x.classList.add("miss")});$("fb").innerHTML=`<div class="fb ${ok?"ok":"bad"}">${ok?"Correct":"Not quite"}</div>`}}
-app.addEventListener("click",e=>{const a=e.target.closest("[data-dr]");if(a)return startDrill(a.dataset.dr);const b=e.target.closest("[data-dl]");if(b)return dialog(+b.dataset.dl);
+app.addEventListener("click",e=>{if(e.target.closest("[data-grammar]"))return startGrammar();const a=e.target.closest("[data-dr]");if(a)return startDrill(a.dataset.dr);const b=e.target.closest("[data-dl]");if(b)return dialog(+b.dataset.dl);
 const s=e.target.closest("[data-dline]");if(s){const m=app.querySelector("h2").textContent,d=DIALOGUES.find(x=>x.t==m);if(d)say(d.l[+s.dataset.dline][0],.8)}});
 // ---------- progress details on the Today screen ----------
 function progressHTML(){const t=T(),H0=S.h||{},ids=Object.keys(S.c).map(Number);if(!ids.length)return"";
@@ -90,3 +90,27 @@ bind("zs","nl-size",v=>document.documentElement.style.setProperty("--zoom",v));b
 $("rb").onclick=remind;$("ex").onclick=()=>share(new File([JSON.stringify({app:"nederlands",v:1,at:Date.now(),S})],"nederlands-progress.json",{type:"application/json"}));
 $("im").onclick=()=>$("imf").click();
 $("imf").onchange=async()=>{try{const o=JSON.parse(await $("imf").files[0].text());if(!o||!o.S||!o.S.c)throw 0;S=merge(S,o.S);save();toast("Imported. You now have "+Object.keys(S.c).length+" words.")}catch(e){toast("That file is not a Nederlands backup.")}$("imf").value=""}}
+
+// ---------- grammar practice ----------
+const GQ=[
+{q:"___ huis is groot.",o:["De","Het"],a:1,why:"Huis is a het-word: het huis."},
+{q:"Ik ___ in Amsterdam.",o:["woon","woont","wonen"],a:0,why:"With ik, use the stem: ik woon."},
+{q:"Morgen ___ ik naar mijn werk.",o:["ga","ik ga","gaat"],a:0,why:"In a main sentence, the verb stays in second position: Morgen ga ik…"},
+{q:"___ je Nederlands?",o:["Spreek","Spreekt","Jij spreekt"],a:0,why:"Yes/no questions start with the verb. The -t drops from spreek when je follows it."},
+{q:"Ik heb ___ fiets.",o:["niet een","geen","niet"],a:1,why:"Use geen to negate a noun with an indefinite or no article: geen fiets."},
+{q:"Ik bel mijn broer ___.",o:["op","aan","uit"],a:0,why:"A separable verb sends its prefix to the end: opbellen → Ik bel … op."},
+{q:"Ik blijf thuis omdat ik moe ___.",o:["ben","is","zijn"],a:0,why:"After omdat, the conjugated verb goes at the end: omdat ik moe ben."},
+{q:"Dat is ___ duur.",o:["geen","niet","nee"],a:1,why:"Use niet to negate an adjective: niet duur."},
+{q:"Ik wil Nederlands ___.",o:["leer","leert","leren"],a:2,why:"After a modal verb like wil, use the infinitive at the end: wil … leren."}
+];
+let GROUND=[];let gqi=0,gok=0;
+function startGrammar(){GROUND=shuf(GQ);gqi=0;gok=0;grammarStep()}
+function grammarStep(){
+if(gqi>=GROUND.length){
+app.innerHTML=`<h2>Grammar complete</h2><p class="mut">${gok} of ${GROUND.length} correct.</p><button class="pri" id="gragain">Practice again</button><button class="ghost" id="grback" style="margin-top:14px">Back to Learn</button>`;
+$("gragain").onclick=startGrammar;$("grback").onclick=learn;return}
+const q=GROUND[gqi];
+app.innerHTML=`<div class="top"><button class="x" id="grclose" aria-label="Back to Learn">×</button><div class="bar"><i style="width:${gqi/GROUND.length*100}%"></i></div></div><h3>Grammar · ${gqi+1} of ${GROUND.length}</h3><div class="big2">${q.q}</div><div id="opts">${shuf(q.o.map((x,i)=>({x,i}))).map(({x,i})=>`<button class="opt" data-gi="${i}">${x}</button>`).join("")}</div><div id="fb"></div><button class="pri" id="grnext" hidden>Continue</button>`;
+$("grclose").onclick=learn;
+$("opts").onclick=e=>{const b=e.target.closest("[data-gi]");if(!b||$("opts").dataset.done)return;$("opts").dataset.done=1;const ok=+b.dataset.gi===q.a;if(ok)gok++;[...$("opts").children].forEach(x=>{x.disabled=true;if(+x.dataset.gi===q.a)x.classList.add("good");else if(x===b)x.classList.add("miss")});$("fb").innerHTML=`<div class="fb ${ok?"ok":"bad"}">${ok?"Correct":"Not quite"}</div><p class="mut">${q.why}</p>`;$("grnext").hidden=false};
+$("grnext").onclick=()=>{gqi++;grammarStep()}}
