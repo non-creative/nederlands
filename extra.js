@@ -4,6 +4,8 @@ for(const i of new Set([...Object.keys(A),...Object.keys(B)])){const x=A[i],y=B[
 const An=a.n||{},Bn=b.n||{};for(const k of new Set([...Object.keys(An),...Object.keys(Bn)]))o.n[k]=Math.max(An[k]||0,Bn[k]||0);
 o.d=[...new Set([...(a.d||[]),...(b.d||[])])].sort((p,q)=>p-q);
 const Ah=a.h||{},Bh=b.h||{};o.h={};for(const k of new Set([...Object.keys(Ah),...Object.keys(Bh)])){const x=Ah[k],y=Bh[k];o.h[k]=!x?y:!y?x:(y[1]>x[1]?y:x)}
+const Ak=a.k||{},Bk=b.k||{};o.k={};for(const k of new Set([...Object.keys(Ak),...Object.keys(Bk)])){const x=Ak[k],y=Bk[k];o.k[k]=!x?y:!y?x:(y.u||0)>(x.u||0)?y:x}
+const Ag=a.g||{},Bg=b.g||{};o.g={};for(const k of new Set([...Object.keys(Ag),...Object.keys(Bg)])){const x=Ag[k],y=Bg[k];o.g[k]=!x?y:!y?x:(y.u||0)>(x.u||0)?y:x}
 return o}
 function lev(a,b){const d=Array.from({length:a.length+1},(_,i)=>[i,...Array(b.length).fill(0)]);for(let j=1;j<=b.length;j++)d[0][j]=j;
 for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]!=b[j-1]));return d[a.length][b.length]}
@@ -53,8 +55,7 @@ catch(e){const x=$("er"),y=$("si");if(x)x.textContent=e.message;if(y)y.disabled=
 if(cfg.on)sync();
 // ---- Speech practice (only when the local Mac server answers) ----
 let ENGINE="",CUR="",HEALTH=null,pm=0;const SR=window.SpeechRecognition||window.webkitSpeechRecognition,IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform=="MacIntel"&&navigator.maxTouchPoints>1),SA=navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;
-// speaking practice is not offered on iPhone/iPad
-document.querySelector('nav [data-v="s"]').hidden=IOS;
+// speech checking is not offered on iPhone/iPad (the Talk tab still works there)
 try{["nl-asr","nl-asr-busy"].forEach(k=>localStorage.removeItem(k));caches.keys().then(ks=>ks.filter(k=>/transformers/i.test(k)).forEach(k=>caches.delete(k)))}catch(x){}
 fetch("api/health").then(r=>r.ok?r.json():null).then(j=>{if(j&&j.speech){ENGINE="whisper";HEALTH=j;engNote();if(j.loading)pollModel();setInterval(()=>{if(!document.hidden)fetch("api/health").catch(()=>{})},3e5)}}).catch(()=>{});
 const engine=()=>ENGINE=="whisper"?"whisper":SR&&!(IOS&&SA)?"browser":"dictate";
@@ -75,8 +76,8 @@ function record(full){const m=engine();if(m=="whisper")return recordW(full);if(m
 let SQ=null,rec=null;const NUM="nul een twee drie vier vijf zes zeven acht negen tien".split(" ");
 function speak(){if(SQ===null){const ids=Object.keys(S.c);SQ=ids.length?+ids[Math.floor(Math.random()*ids.length)]:Math.floor(Math.random()*10)}
 const full=W[SQ][2].replace(/[{}]/g,"");
-app.innerHTML=`<h3>Say this sentence</h3><div class="big2">${full}</div><div class="tr">${W[SQ][3]}</div>${window.sguide?sguide(full):""}<button class="ghost" id="ls">Listen first</button><button class="ghost" id="sl">Slow</button><button class="pri" id="rc">Record</button><p class="mut" id="eng" style="margin-top:12px"></p><div id="dict"></div><div id="res"></div><button class="ghost" id="nx">Another sentence</button>`;
-$("ls").onclick=()=>say(full);$("sl").onclick=()=>say(full,.55);$("nx").onclick=()=>{SQ=null;speak()};$("rc").onclick=()=>record(full);CUR=full;engNote()}
+app.innerHTML=`<div class="gtop"><button class="x" id="sbk" aria-label="Back to Talk">×</button><span class="mut">Pronunciation check</span></div><h3 style="margin-top:12px">Say this sentence</h3><div class="big2">${full}</div><div class="tr">${W[SQ][3]}</div>${window.sguide?sguide(full):""}<button class="ghost" id="ls">Listen first</button><button class="ghost" id="sl">Slow</button><button class="pri" id="rc">Record</button><p class="mut" id="eng" style="margin-top:12px"></p><div id="dict"></div><div id="res"></div><button class="ghost" id="nx">Another sentence</button>`;
+$("sbk").onclick=()=>window.talk?talk():show("p");$("ls").onclick=()=>say(full);$("sl").onclick=()=>say(full,.55);$("nx").onclick=()=>{SQ=null;speak()};$("rc").onclick=()=>record(full);CUR=full;engNote()}
 async function recordW(full){const b=$("rc"),out=$("res");if(rec){rec.stop();return}
 try{const st=await navigator.mediaDevices.getUserMedia({audio:true}),ch=[];rec=new MediaRecorder(st);
 rec.ondataavailable=e=>ch.push(e.data);
